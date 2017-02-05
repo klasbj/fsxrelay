@@ -1,5 +1,7 @@
 using System;
+using System.Text;
 using System.Threading;
+using Newtonsoft.Json;
 
 namespace fsx_relay_console
 {
@@ -35,12 +37,17 @@ namespace fsx_relay_console
             {
                 this.Response.ContentType = "text/json";
                 this.Response.StatusCode = 200;
-                this.Response.ContentEncoding = System.Text.Encoding.UTF8;
-                
-                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(jsonText);
+                this.Response.ContentEncoding = Encoding.UTF8;
+
+                byte[] bytes = Encoding.UTF8.GetBytes(jsonText);
                 this.Response.ContentLength64 = bytes.Length;
                 this.Response.OutputStream.Write(bytes, 0, bytes.Length);
                 this.Response.OutputStream.Close();
+            }
+
+            public void SendJson<T>(T o)
+            {
+                this.SendJson(JsonConvert.SerializeObject(o));
             }
         }
 

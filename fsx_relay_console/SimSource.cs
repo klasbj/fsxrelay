@@ -140,9 +140,13 @@ namespace fsx_relay_console
         {
             if (timer == null)
             {
-                const long interval = 100;
-                timer = new Timer((x) => { this.Update(interval / 1000.0); }
-                                , this, 0, interval);
+                var last = DateTime.Now;
+                const long interval = 1000;
+                timer = new Timer((x) => {
+                    var now = DateTime.Now;
+                    this.Update((now - last).TotalSeconds);
+                    last = now;
+                    }, this, 0, interval);
             }
         }
 

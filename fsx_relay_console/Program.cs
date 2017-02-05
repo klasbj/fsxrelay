@@ -1,44 +1,53 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using BeatlesBlog.SimConnect;
 using System.Net.Sockets;
 using System.Threading;
 using System.Net;
-using System.Globalization;
-using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json;
 using System.Collections.Concurrent;
 
 namespace fsx_relay_console
 {
+    
     class Program
     {
+        public static AutoResetEvent exitEvent = new AutoResetEvent(false);
         static void Main(string[] args)
         {
             Logger logger = Logger.GetLogger();
 
-            SC sc = new SC();
-
             Console.CancelKeyPress += (a,b) => {
-                if (sc != null)
-                {
-                    b.Cancel = true;
-                    sc.exitEvent.Set();
-                }
+                b.Cancel = true;
+                Program.exitEvent.Set();
             };
 
             logger.Log("Helo");
+
+            var datas = new ConcurrentDictionary<string,object>();
 
             var httpserver = new Http.HttpServer("http://*:8080/");
             httpserver.Get("/helo", (req,res) => {
                 res.SendJson(@"{""answer"":""helo""}");
             });
+            httpserver.Get("/instrumentdata", (req,res) => {
+                res.SendJson(datas["instrumentdata"]);
+            });
             httpserver.Listen();
 
-            sc.Run();
-            sc = null;
+            var cnt = 0;
+            ISimClient sim = new DummySimClient();
+            sim.Disconnected += () => { Program.exitEvent.Set(); };
+            sim.InstrumentDataReceived += (client,data) => {
+                cnt++;
+                if (cnt % 3 == 0) data.instrumentdata.pitch = 3.0f;
+                datas["instrumentdata"] = data; //JsonConvert.SerializeObject(data);
+                //Logger.GetLogger().Log(js);
+            };
+            Logger.GetLogger().Log("Set up. Starting...");
+            sim.Open("Helo");
+
+            Program.exitEvent.WaitOne();
             httpserver.Stop();
 
 
@@ -57,7 +66,6 @@ namespace fsx_relay_console
     {
         UdpClient socket = null;
         SimConnect sc = null;
-        public AutoResetEvent exitEvent = new AutoResetEvent(false);
         ConcurrentDictionary<IPEndPoint, DateTime> clients = null;
 
         public SC()
@@ -137,7 +145,7 @@ namespace fsx_relay_console
         {
             //socket.BeginReceive(Receive, socket);
             ISimClient sim = new DummySimClient();
-            sim.Disconnected += () => { exitEvent.Set(); };
+            sim.Disconnected += () => { Program.exitEvent.Set(); };
             sim.InstrumentDataReceived += (client,data) => {
                 var js = JsonConvert.SerializeObject(data);
                 //Logger.GetLogger().Log(js);
@@ -146,7 +154,7 @@ namespace fsx_relay_console
             Logger.GetLogger().Log("Set up. Starting...");
             sim.Open("Helo");
 
-            exitEvent.WaitOne();
+            Program.exitEvent.WaitOne();
             //socket.Close();
         }
         // public void Run()

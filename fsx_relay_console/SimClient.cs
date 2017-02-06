@@ -20,13 +20,6 @@ namespace fsx_relay_console
 
         [DataItem("Attitude Cage", "bool")]
         public bool caged;
-
-        public string ToJson()
-        {
-            Thread.CurrentThread.CurrentCulture = CultureInfo.CreateSpecificCulture("en-US");
-            return String.Format("{{\"pitch\":{0:G10},\"bank\":{1:G10},\"bars_position\":{2:G10},\"caged\":{3} }}",
-                this.pitch, this.bank, this.bars_position, this.caged ? "true" : "false");
-        }
     }
 
     [DataStruct()]
@@ -89,6 +82,12 @@ namespace fsx_relay_console
         public AltitudeData altitude;
     }
 
+    enum Requests
+    {
+        InstrumentData,
+        AirspeedOnce
+    }
+
     public delegate void InstrumentDataHandler(ISimClient client, InstrumentData data);
     public delegate void DisconnectHandler();
     public interface ISimClient
@@ -99,6 +98,81 @@ namespace fsx_relay_console
         void Open(string name);
         void Open(string name, string hostName, int port, bool localIfAble = true);
         void Close();
+    }
+
+    public class SimClient : ISimClient
+    {
+        public event InstrumentDataHandler InstrumentDataReceived;
+        public event DisconnectHandler Disconnected;
+
+        private SimConnect sc = new SimConnect();
+
+        public SimClient()
+        {
+            sc.OnRecvOpen += Sc_OnRecvOpen;
+            sc.OnRecvQuit += Sc_OnRecvQuit;
+            sc.OnRecvException += Sc_OnRecvException;
+            sc.OnRecvSimobjectData += Sc_OnRecvSimobjectData;
+        }
+
+        private void Sc_OnRecvSimobjectData(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
+        {
+            switch ((Requests)data.dwRequestID)
+            {
+                case Requests.InstrumentData:
+                    InstrumentDataReceived(this, (InstrumentData)data.dwData);
+                    break;
+                case Requests.AirspeedOnce:
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private void Sc_OnRecvException(SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
+        {
+            Logger.GetLogger().Log($"Received exception: {(SIMCONNECT_EXCEPTION)data.dwException}, {data.dwIndex}");
+        }
+
+        private void Sc_OnRecvQuit(SimConnect sender, SIMCONNECT_RECV data)
+        {
+            Logger.GetLogger().Log("Received quit from FSX.");
+            Disconnected();
+        }
+
+        private void Sc_OnRecvOpen(SimConnect sender, SIMCONNECT_RECV_OPEN data)
+        {
+            sc.RequestDataOnUserSimObject(Requests.InstrumentData, SIMCONNECT_PERIOD.SIM_FRAME, typeof(InstrumentData));
+        }
+
+        public void Close()
+        {
+            sc.Close();
+            Disconnected();
+        }
+
+        public void Open(string name)
+        {
+            if (!SimConnect.IsLocalRunning())
+            {
+                Logger.GetLogger().Log("Unable to start SimConnect, no local running.");
+                Disconnected();
+                return;
+            }
+            sc.Open(name);
+        }
+
+        public void Open(string name, string hostName, int port, bool localIfAble = true)
+        {
+            if (localIfAble && SimConnect.IsLocalRunning())
+            {
+                sc.Open(name);
+            }
+            else
+            {
+                sc.Open(name, hostName, port);
+            }
+        }
     }
 
     public class DummySimClient : ISimClient
@@ -134,6 +208,7 @@ namespace fsx_relay_console
                 timer.Dispose();
                 timer = null;
             }
+            Disconnected();
         }
 
         public void Open(string name)

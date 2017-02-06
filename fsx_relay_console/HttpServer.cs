@@ -31,6 +31,7 @@ namespace fsx_relay_console
             public HttpResponse(System.Net.HttpListenerResponse r)
             {
                 this.Response = r;
+                this.Response.AddHeader("Access-Control-Allow-Origin", "*");
             }
 
             public void SendJson(string jsonText)
